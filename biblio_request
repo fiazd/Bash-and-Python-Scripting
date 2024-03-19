@@ -1,0 +1,136 @@
+#!/bin/bash
+
+get_password_expiry_from_shadow() {
+    local account=$1
+    local expiry_date=`grep "${account}:" /etc/shadow | awk -F':' '{ if ($8 == "") expiry_date = "never"; else expiry_date = strftime("%Y-%m-%d", ($8 * 86400 + 86400)); print expiry_date }'`
+    echo "$expiry_date"
+}
+
+get_sponsor_email() {
+    local account=$1
+    local sponsor_path="/usr/local/etc/sponsors/$account"
+    if [[ $sponsor_email == *"<"* ]]; then
+        #echo "sponsor field has less than!"
+        local sponsor_email=$(cat /usr/local/etc/sponsors/$account | grep -oP '(?<=<)[^>]+')
+    fi
+
+    if [[ $sponsor_email == *"["* ]]; then
+        #echo "sponsor field has open bracket!"
+        local sponsor_email=$(cat /usr/local/etc/sponsors/$account | grep -oP '(?<=\[)[^\]]+')
+    fi
+
+    #local sponsor_email=$(grep -oP '<\K[^>]+' "$sponsor_path" 2>/dev/null)
+    echo "$sponsor_email"
+}
+
+is_going_to_expire() {
+    local chage_date=$1
+    local expiry_date=$(date -d "$chage_date" "+%s")
+    local today=$(date "+%s")
+    local diff_days=$(( ($expiry_date - $today) / (60*60*24) ))
+    if [ $diff_days -le $BUFFER_DURATION ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+extract_email_from_forward_file() {
+    local username=$1
+    local forward_file_path="/sciclone/home/$username/.forward"
+    if [ -f "$forward_file_path" ]; then
+        local email=$(head -n 1 "$forward_file_path" | awk '{print $1}')
+        if [[ "$email" == *@* ]]; then
+            echo "$email"
+        fi
+    fi
+}
+
+check_hostname() {
+    local expected_hostname=$1
+    local curr_hostname=$(hostname)
+    if [ "$curr_hostname" != "$expected_hostname" ]; then
+        exit 1
+    else
+        main
+        exit 0
+    fi
+}
+
+convert_date_format() {
+    local input_date=$1
+    local formatted_date=$(date -d "$input_date" "+%B %d, %Y")
+    echo "$formatted_date" #return formatted date
+}
+
+send_email() {
+    local recipient="$1"
+    local username="$2"
+    local sponsor_email="$3"
+    local expiry_date="$4"
+    /usr/sbin/sendmail -t<<EOM
+To: $recipient
+CC: $sponsor_email
+BCC: 
+From: 
+Subject: Request for Bibliographic Citations
+Our records indicate that you have had an active William & Mary HPC
+account ($username) at some point within the past six months.  We are asking all of
+our users to submit complete bibliographic citations for any tech
+reports, theses, dissertations, conference papers, journal articles, or
+other publications which contain results that were obtained on SciClone
+or Chesapeake.  Citations which were previously reported to us need not
+be repeated.
+
+Submitted citations will be posted in the Publications section of the
+W&M HPC web site, and are important to have when we report to our
+sponsors or attempt to secure funding for future upgrades.
+
+We also request that you acknowledge our sponsors in documents or
+presentations which contain results from SciClone or Chesapeake.
+The preferred language can be found on our web site at:
+
+
+The most recent list of publications can be found here:
+
+
+Your assistance is greatly appreciated.
+
+signature here
+
+EOM
+}
+
+main() {
+    sender_email="" # it hpc email
+    receiver_email="" # user_email
+    cc_email="" # sponsor_email
+    subject="HPC Account Expiration"
+    smtp_server=
+    smtp_port=25
+
+    accounts=$(awk -F: '{print $1}' /etc/passwd | sort)
+    for account in $accounts; do
+        if [ -d "/sciclone/home/$user" ]; then
+            chage_date=$(get_password_expiry_from_shadow "$account")
+            if [[ $chage_date != *"never"* ]]; then
+                user_email=$(extract_email_from_forward_file "$account")
+                cc_email=$(get_sponsor_email "$account")
+                #echo $account $chage_date
+                # if that date is within the next 31 days
+                curr_date=$(date +%Y-%m-%d)
+                previous_date=$(date -d "-183 days" +%Y-%m-%d)
+                if [[ "$chage_date" > "$previous_date" && "$chage_date" < "$curr_date" ]]; then
+                    cv_date=$(convert_date_format "$chage_date")
+                    if [ "$cc_email" == "undefined@und" ]; then
+                        cc_email=""
+                    fi
+                    send_email "$user_email" "$account" "$cc_email" "$cv_date"
+                fi
+            fi
+        fi
+    done
+}
+
+# Main
+check_hostname ""

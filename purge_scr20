@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+#  Deletes files older than 90 days from
+#  all user's directories on /sciclone/scr20
+#
+#  Revised:
+#      COMMENT
+#
+
+#retrieve users
+users=`awk -F: '{print $1}' /etc/passwd | sort`
+Age=90
+
+for i in $users
+do
+        Scr="/sciclone/scr20/$i"
+        #if the directory exists and the user is not root
+        if [[ -d $Scr && $i != "root" ]] ; then
+                echo $Scr
+                #first comment is the one we need to uncomment
+                #/bin/find $Scr -mount -type f -atime +$Age -exec ls -lu "{}" \;
+                /bin/find $Scr -mount -type f -atime +$Age -print -exec /bin/rm -f {} \;
+                #/bin/find $Scr -mount -depth -type d ! -name $2 ! -name TMPDIR -empty -mtime +$Age -exec /bin/rmdir {} \;
+        fi
+done
+
+exit 0

@@ -1,0 +1,144 @@
+#!/bin/bash
+# Daanish Fiaz
+# October 25th, 2023
+# this script has been modified to remove sensitive information.
+
+# check if script is being ran as root
+if [ $(whoami) != "root" ]; then
+    echo "Script must be ran as root!"
+    exit 1
+fi
+# check if script is being ran on util
+if [ $(hostname) != "comet" ]; then
+    echo "Script must be ran on comet!"
+    exit 1
+fi
+# function to send an email
+if [ -z "$1" ]; then
+    echo "Enter a username!"
+    exit 1
+fi
+# subject should be "HPC Account Activation"
+user_name=$1
+user_email=$(cat /sciclone/home/"$user_name"/.forward)
+
+# check expiry
+expiry=$(chage -l "$user_name" | grep "Account expires" | awk -F ": " '{print $2}')
+
+
+# retrieve sponsor email from /sciclone/home/sysops/acct/
+#sponsor_email=$(cat /usr/local/etc/sponsors/$user_name | grep -oP '(?<=<)[^>]+')
+
+# check if sponsor email has <> or [] then extract email accordingly
+if [[ $sponsor_email == *"<"* ]]; then
+    #echo "sponsor field has less than!"
+    sponsor_email=$(cat /usr/local/etc/sponsors/$user_name | grep -oP '(?<=<)[^>]+')
+fi
+
+if [[ $sponsor_email == *"["* ]]; then
+    #echo "sponsor field has open bracket!"
+    sponsor_email=$(cat /usr/local/etc/sponsors/$user_name | grep -oP '(?<=\[)[^\]]+')
+fi
+
+if [ "$sponsor_email" == "undefined@und" ]; then
+    sponsor_email=""
+fi
+#echo $sponsor_email
+send_email() {
+    local recipient="$1"
+    local username="$2"
+    local sponsor_email="$3"
+    /usr/sbin/sendmail -t<<EOM
+To: $user_email
+CC: $sponsor_email
+BCC: 
+From:
+Subject: HPC Account Activation
+Your W&M HPC account is now active with the username "$username". And will expire on $expiry .
+Your password is the same as the one associated with your W&M Username.
+For basic information about logging in for the first time, see
+
+
+
+When reporting results that were obtained on SciClone or Chesapeake, we
+request that you use language similar to the following to acknowledge
+our sponsors:
+
+"The authors acknowledge William & Mary Research Computing for providing
+computational resources and/or technical support that have contributed to the
+results reported within this paper. URL:   "
+
+Also, please notify us of any tech reports, conference papers, or
+journal articles which contain results which were obtained on SciClone
+or Chesapeake. Your assistance will help to ensure that our bibliography
+of research results is as complete as possible when we seek future
+funding to maintain and enhance the system.
+
+--
+HPC Account Manager
+EOM
+
+    if [ $? -eq 0 ]; then
+        echo "Email sent to $recipient and sponsor $sponsor_email"
+    else
+        echo "Email failed to send to $recipient"
+    fi
+}
+
+send_email $user_email $user_name $sponsor_email
+
+send_email_group_user() {
+    local username="$1"
+    /usr/sbin/sendmail -t<<EOM
+To: #sysadmin email
+To:  # supe email
+From:
+Subject: NEW group USER
+Check that the new group user has
+
+g+rx in /sciclone/*/<USER> top level folders and
+
+add umask 027 to /sciclone/home/<USER>/.cshrc and .bashrc
+
+NEW USER = $username
+EOM
+
+    if [ $? -eq 0 ]; then
+        echo "SENT IT EMAIL ABOUT NEW group USER $username"
+    else
+        echo "Email failed to send about new group user"
+    fi
+
+}
+
+if [ "$sponsor_email" == "" ]; then
+    send_email_group_user $user_name
+fi
+
+## lastly, we want to check if the person is a vims user and if they are add them to the vims mailing list
+## we can do this by grepping for vims from the user's /etc/passwd.
+## checked to make sure this is working, it is - dhf
+vims_check=$(cat /etc/passwd | grep "$user_name" | grep -i vims)
+if [[ "$vims_check" != "" ]]; then
+    # meaning that if vims check is not empty
+    # then that user is a vims user, and we should add them to the mailing list
+    echo '' | /bin/mail -r  -s "ADD HPC $user_email $user_name" 
+    echo "ADD request sent to "
+fi
+
+## and if they are not a vims user, just add them to the mailing list like normal by inserting into the db
+if [[ "$vims_check" == "" ]]; then
+    uid=$(id -u $user_name)
+    newentry="(1,$uid,\"$user_email\")"
+    #echo $newentry
+    mysql --defaults-extra-file=/usr/local/etc/acct/.my.cnf <<SQL
+    INSERT INTO users (active,uid,email)
+    VALUES $newentry
+    ON DUPLICATE KEY UPDATE
+      active=VALUES(active),
+      email=VALUES(email)
+    ;
+SQL
+    echo "User $user_name added to HPC mailing list"
+fi
+

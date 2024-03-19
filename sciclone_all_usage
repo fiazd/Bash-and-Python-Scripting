@@ -1,0 +1,29 @@
+#!/bin/bash
+#November 23rd, 2020
+#Daanish
+
+#all users
+#users=`awk -F: '{print $1}' /etc/passwd | sort`
+#expired users
+users=`awk '{print $1}' ./expired_users | sort`
+
+for i in $users
+do
+        h10=0
+        h20=0
+        d10=0
+        if [[ -d /sciclone/home10/$i ]] ; then
+                h10=`du -shm /sciclone/home10/$i|awk '{print $1}'`
+        fi
+
+        if [[ -d /sciclone/home20/$i ]] ; then
+                h20=`du -shm /sciclone/home20/$i|awk '{print $1}'`
+        fi
+
+        if [[ -d /sciclone/data10/$i ]] ; then
+                d10=`du -shm /sciclone/data10/$i|awk '{print $1}'`
+        fi
+
+        total=`echo "$h10 + $h20 + $d10 " |bc `
+        echo "$i,$h10,$h20,$d10,$total"
+done

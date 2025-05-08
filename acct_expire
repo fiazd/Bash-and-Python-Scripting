@@ -1,0 +1,69 @@
+#!/bin/bash
+# DAANISH FIAZ
+# script to notify user and their sponsor the day their account has expired!
+check_expired_users() {
+    today_date=$(date +%Y-%m-%d)
+    accounts=$(cut -d: -f1 /etc/passwd)
+
+    for account in $accounts; do
+        chage_output=$(chage -l "$account")
+
+        while IFS= read -r line; do
+            if [[ $line == *"Account expires"* ]]; then
+                IFS=':' read -r -a parts <<< "$line"
+                expiry_date=$(echo "${parts[1]}" | xargs)
+                if [[ $expiry_date != "never" ]]; then
+                    expiry_date=$(date -d "$expiry_date" +%Y-%m-%d)
+                    if [[ $expiry_date == $today_date ]]; then
+                        #sponsor_email=$(cat /usr/local/etc/sponsors/$account | grep -oP '(?<=<)[^>]+')
+                        if [[ $sponsor_email == *"<"* ]]; then
+                            #echo "sponsor field has less than!"
+                            sponsor_email=$(cat /usr/local/etc/sponsors/$user_name | grep -oP '(?<=<)[^>]+')
+                        fi
+
+                        if [[ $sponsor_email == *"["* ]]; then
+                            #echo "sponsor field has open bracket!"
+                            sponsor_email=$(cat /usr/local/etc/sponsors/$user_name | grep -oP '(?<=\[)[^\]]+')
+                        fi
+
+                        if [ "$sponsor_email" == "undefined@und" ]; then
+                            sponsor_email=""
+                        fi
+                        user_email=$(cat /sciclone/home/$account/.forward)
+                        #echo "User $account has expired today. User email is:$user_email and Sponsor email is: $sponsor_email"
+                        send_email $user_email $account $sponsor_email
+                    fi
+                fi
+            fi
+        done <<< "$chage_output"
+    done
+}
+
+send_email() {
+        local recipient="$1"
+        local username="$2"
+        local sponsor_email="$3"
+        /usr/sbin/sendmail -t<<EOM
+To: $recipient
+CC: $sponsor_email
+BCC: 
+From: 
+Subject: HPC Account Expiration
+Your account ($username) on the W&M HPC systems has expired today.
+
+If you require continued access to the systems, or to retrieve files
+before they become subject to deletion next month, please submit
+a new account request using the online form which is available
+on the HPC web site at:
+
+  website here
+EOM
+
+        #if [ $? -eq 0 ]; then
+        #    echo "Email sent to $recipient and sponsor $sponsor_email"
+        #else
+        #    echo "Email failed to send to $recipient"
+        #fi
+    }
+
+check_expired_users

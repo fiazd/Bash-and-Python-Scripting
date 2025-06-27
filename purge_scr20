@@ -3,10 +3,8 @@
 #  Deletes files older than 90 days from
 #  all user's directories on /sciclone/scr20
 #
-#  Revised:
-#      COMMENT
-#
 
+dry_run="no"
 #retrieve users
 users=`awk -F: '{print $1}' /etc/passwd | sort`
 Age=90
@@ -18,9 +16,11 @@ do
         if [[ -d $Scr && $i != "root" ]] ; then
                 echo $Scr
                 #first comment is the one we need to uncomment
-                #/bin/find $Scr -mount -type f -atime +$Age -exec ls -lu "{}" \;
-                /bin/find $Scr -mount -type f -atime +$Age -print -exec /bin/rm -f {} \;
-                #/bin/find $Scr -mount -depth -type d ! -name $2 ! -name TMPDIR -empty -mtime +$Age -exec /bin/rmdir {} \;
+                if [[ "$dry_run" -eq "yes" ]]; then
+                        /bin/find $Scr -mount -type f -atime +$Age -exec ls -lu "{}" \        
+                elif [[ "$dry_run" -eq "no" ]]; then
+                        /bin/find $Scr -mount -type f -atime +$Age -print -exec /bin/rm -f {} \;
+                fi
         fi
 done
 
